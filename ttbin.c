@@ -3,14 +3,22 @@
 #include <stdlib.h>
 #include <time.h>
 
-// Header:
+// Header (Tag 0x20)
 typedef struct __attribute__((__packed__)) {
-  uint16_t magic;      // Seems to always be 20 05.
+  uint8_t file_format; // Currently 07, have also seen 05
   uint8_t version[4];  // Watch software version.
   uint16_t unkown1;
   uint32_t timestamp;  // Seconds since 1/1/1970
   uint8_t unknown2[105];
 } Header;
+
+// Record lengths (Tag 0x16)
+// This might be variable length???
+// Each entry is { uint8_t tag; uint16_t (length + 1); }
+// for example: 21 07 00
+typedef struct __attribute__((__packed__)) {
+  uint8_t entries[69];
+} RecordLengths;
 
 // Tag 0x22
 typedef struct __attribute__((__packed__)) {
@@ -18,20 +26,21 @@ typedef struct __attribute__((__packed__)) {
   int32_t longitude; // in 1e-7 degrees
   uint16_t u1;
   uint16_t speed;  // 100 * m/s
-  uint16_t u2;
   uint32_t time; // seconds since 1970
-  uint32_t calories;
-  uint16_t u3;
-  uint16_t distance;  // in .1 m
-  uint8_t u4;
+  uint16_t calories;
+  float inc_distance;
+  float cum_distance;
+  uint8_t cycles; // Tomtom CSV calls it "cycles", maybe steps?
 } GPS;
 
 // Tag 0x25
 typedef struct __attribute__((__packed__)) {
-  uint16_t heart_rate;
+  uint8_t heart_rate;
+  uint8_t u1;
   uint32_t time;
 } HeartRate;
 
+// Tag 0x21
 typedef struct __attribute__((__packed__)) {
   uint8_t lap;
   uint8_t activity;
@@ -161,12 +170,11 @@ int main(int argc, char** argv) {
     printf("Failed to open: %s\n", argv[1]);
     return -1;
   }
-  // Skip the header (structure mostly unknown).
-  Header header;
-  ReadStruct(f, &header, sizeof(header));
 
   uint8_t buffer[255];
 
+  Header header;
+  RecordLengths record_lengths;
   GPS gps;
   HeartRate heart;
   Summary summary;
@@ -181,9 +189,22 @@ int main(int argc, char** argv) {
     }
     uint8_t tag = buffer[0];
     switch(tag) {
+      case 0x20:
+        ReadStruct(f, &header, sizeof(header));
+        printf("[%s] Header: file format %i, watch version (%i,%i,%i,%i)\n",
+                GetGMTTime(header.timestamp), header.file_format,
+                header.version[0], header.version[1],
+                header.version[2], header.version[3]);
+        break;
+
+      case 0x16:
+        ReadStruct(f, &record_lengths, sizeof(record_lengths));
+        printf("Record lengths (ignored)\n");
+        break;
+
       case 0x21:
         ReadStruct(f, &lap, sizeof(lap));
-        printf("[%s] Lap: %i activity: %s\n", GetLocalTime(lap.time), lap.lap,
+        printf("[%s] Lap: %i activity: %s\n", GetGMTTime(lap.time), lap.lap,
                GetActivityType(lap.activity));
         break;
 
@@ -191,13 +212,13 @@ int main(int argc, char** argv) {
         printf("\n");
         ReadStruct(f, &gps, sizeof(gps));
         if (gps.time != 0xffffffff) {
-          printf("[%s] GPS: Lat: %f, Long: %f, Speed: %.2f m/s,"
-                 "Cal: %i, Distance: %.1f m   "
-                 "%04X %04X %04X %02X\n",
+          printf("[%s] GPS: Lat: %f, Long: %f, Speed: %.2f m/s, "
+                 "Cal: %i, Distance: %f m (+ %f m), Cycles: %i   "
+                 "%04X\n",
                  GetLocalTime(gps.time),
                  gps.latitude * 1e-7, gps.longitude * 1e-7, gps.speed * 0.01,
-                 gps.calories,
-                 gps.distance * 0.1,  gps.u1, gps.u2, gps.u3, gps.u4);
+                 gps.calories, gps.cycles,
+                 gps.cum_distance, gps.inc_distance, gps.u1);
         } else {
           printf("No GPS lock\n");
         }
