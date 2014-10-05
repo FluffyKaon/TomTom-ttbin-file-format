@@ -24,7 +24,7 @@ typedef struct __attribute__((__packed__)) {
 typedef struct __attribute__((__packed__)) {
   int32_t latitude;  // in 1e-7 degrees
   int32_t longitude; // in 1e-7 degrees
-  uint16_t u1;
+  uint16_t heading;  // degrees * 100, 0 = North, 9000 = East...
   uint16_t speed;  // 100 * m/s
   uint32_t time; // seconds since 1970
   uint16_t calories;
@@ -214,11 +214,11 @@ int main(int argc, char** argv) {
         if (gps.time != 0xffffffff) {
           printf("[%s] GPS: Lat: %f, Long: %f, Speed: %.2f m/s, "
                  "Cal: %i, Distance: %f m (+ %f m), Cycles: %i   "
-                 "%04X\n",
+                 "Heading %.2f\u00B0\n",
                  GetLocalTime(gps.time),
                  gps.latitude * 1e-7, gps.longitude * 1e-7, gps.speed * 0.01,
                  gps.calories, gps.cycles,
-                 gps.cum_distance, gps.inc_distance, gps.u1);
+                 gps.cum_distance, gps.inc_distance, gps.heading * .01);
         } else {
           printf("No GPS lock\n");
         }
